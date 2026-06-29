@@ -64,6 +64,7 @@ windows:
         <% camera_ids.each do |cam_id| %>
         - until ros2 run yolo_py yolo_py --camera-id <%= cam_id %> <% if odom != 'none' %>--ros2-frame-publisher<% end %> <%= headless ? '--headless' : '' %> <%= hitl ? '--hitl' : '' %> <%= remote_video_streams ? '--remote-video-streams' : '' %> <%= simulated_time ? "--ros-args -p use_sim_time:=true --hfov #{hfov_deg}" : '' %>; do sleep 2; done
         <% end %>
+        - ros2 run launch realsense2_camera rs_launch.py camera_namespace:=Drone1
         <% end %>
         <% if lidar %>
         - ros2 launch kiss_icp odometry.launch.py topic:=/lidar_points <%= headless ? 'visualize:=false' : '' %>
@@ -89,7 +90,7 @@ windows:
   - uxrce_dds_and_zenoh:
       layout: even-horizontal
       panes:
-        - MicroXRCEAgent udp4 -p 8888
+        - MicroXRCEAgent serial --dev /dev/ttyTHS1 -b 921600
   <% elsif autopilot == 'ardupilot' %>
   - mavros_and_zenoh:
       layout: even-horizontal
