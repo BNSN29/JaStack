@@ -9,11 +9,12 @@ set -e
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 # By default, skip building advanced odometry, SLAM packages
-BUILD_ADVANCED_ODOM=${EXTRAS:-false}
+BUILD_ADVANCED_ODOM=${ADVANCE_ODOM:-false}
+BUILD_PERCEPTION=${PERCEPTION:-false}
 
 BUILD_OPTS=""
 if [ "${CLEAN_BUILD:-false}" = "true" ]; then
-  rm -rf "${SCRIPT_DIR}/../_github_clones"
+  rm -rf "${SCRIPT_DIR}/../github_clones"
   BUILD_OPTS="--no-cache" # If CLEAN_BUILD is "true", rebuild everything from scratch
   docker rmi aircraft-image:latest || true
   docker builder prune -f # Remove all dangling build cache to free up space
@@ -25,7 +26,7 @@ if [ "${CLONE_ONLY:-false}" = "true" ]; then
 fi
 
 # Create a folder (ignored by git) to clone GitHub repos
-CLONE_DIR="${SCRIPT_DIR}/../_github_clones"
+CLONE_DIR="${SCRIPT_DIR}/../github_clones"
 mkdir -p "$CLONE_DIR"
 
 REPOS=( # Format: "URL;BRANCH;LOCAL_DIR_NAME"
@@ -43,6 +44,8 @@ REPOS=( # Format: "URL;BRANCH;LOCAL_DIR_NAME"
 )
 
 for repo_info in "${REPOS[@]}"; do
+  # IFS: internal Field Seperator
+  # read -r url branch, assignes succeccessively "url" "branch" "dir" the variables from the splitt of $repo_info
   IFS=';' read -r url branch dir <<< "$repo_info" # Split the string into URL, BRANCH, and DIR
   TARGET_DIR="${CLONE_DIR}/${dir}"
   if [ -d "$TARGET_DIR" ]; then
@@ -64,7 +67,11 @@ for repo_info in "${REPOS[@]}"; do
 done
 
 if [ "$BUILD_DOCKER" = "true" ]; then
-  docker build $BUILD_OPTS --build-arg BUILD_ADVANCED_ODOM="${BUILD_ADVANCED_ODOM}" -t aircraft-image -f "${SCRIPT_DIR}/docker/aircraft.dockerfile" "${SCRIPT_DIR}/.."
+  docker build $BUILD_OPTS \
+  --build-arg BUILD_ADVANCED_ODOM="${BUILD_ADVANCED_ODOM}" \
+  --build-arg BUILD_PERCEPTION="${BUILD_PERCEPTION}" \
+  -t aircraft-image -f "${SCRIPT_DIR}/docker/aircraft.dockerfile" "${SCRIPT_DIR}/.."
 else
   echo -e "Skipping Docker build"
 fi
+ 

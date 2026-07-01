@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>aerial-autonomy-stack · Deep Dive</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #1c2333;
+    --border: #30363d;
+    --accent: #58a6ff;
+    --accent2: #3fb950;
+    --accent3: #f78166;
+    --accent4: #d2a8ff;
+    --accent5: #ffa657;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    --font-body: 'Inter', -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* HEADER */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .repo-icon {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent4) 100%);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+  }
+  .repo-title { font-weight: 700; font-size: 16px; }
+  .repo-sub { color: var(--muted); font-size: 12px; }
+  .badges { margin-left: auto; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .badge {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 12px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .badge .dot { width: 6px; height: 6px; border-radius: 50%; }
+
+  /* NAV TABS */
+  .tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    padding: 0 32px;
+    overflow-x: auto;
+  }
+  .tab {
+    padding: 12px 20px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: color 0.15s, border-color 0.15s;
+    user-select: none;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* MAIN LAYOUT */
+  .container { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+
+  /* SECTION */
+  .section { display: none; }
+  .section.active { display: block; }
+
+  /* CARDS */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .card-title {
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card-sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+
+  /* GRID */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  @media (max-width: 720px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+  /* OVERVIEW STATS */
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  @media (max-width: 600px) { .stat-grid { grid-template-columns: 1fr 1fr; } }
+  .stat-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+  }
+  .stat-num { font-size: 24px; font-weight: 800; }
+  .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+
+  /* CODE BLOCK */
+  pre, code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  pre {
+    background: #010409;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    line-height: 1.7;
+    margin: 12px 0;
+  }
+  code {
+    background: rgba(110,118,129,0.15);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+  pre code { background: none; padding: 0; }
+
+  /* HIGHLIGHT TOKENS */
+  .kw { color: #ff7b72; }
+  .str { color: #a5d6ff; }
+  .cm { color: #8b949e; font-style: italic; }
+  .fn { color: #d2a8ff; }
+  .num { color: #ffa657; }
+  .var { color: #79c0ff; }
+  .op { color: #ff7b72; }
+
+  /* TREE */
+  .tree {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.9;
+    background: #010409;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px 20px;
+  }
+  .tree-folder { color: var(--accent); font-weight: 600; }
+  .tree-file { color: var(--text); }
+  .tree-comment { color: var(--muted); }
+  .tree-key { color: var(--accent3); }
+
+  /* FLOW / DIAGRAM */
+  .flow {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    margin: 16px 0;
+  }
+  .flow-node {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    min-width: 140px;
+    text-align: center;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  .flow-node.highlight { border-color: var(--accent); background: rgba(88,166,255,0.08); }
+  .flow-node.green { border-color: var(--accent2); background: rgba(63,185,80,0.08); }
+  .flow-node.purple { border-color: var(--accent4); background: rgba(210,168,255,0.08); }
+  .flow-node.orange { border-color: var(--accent5); background: rgba(255,166,87,0.08); }
+  .flow-node-title { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+  .flow-arrow {
+    display: flex; align-items: center;
+    padding: 0 6px;
+    color: var(--muted);
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+
+  /* TAGS */
+  .tag {
+    display: inline-block;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 3px 10px;
+    font-size: 11px;
+    color: var(--muted);
+    margin: 2px;
+  }
+  .tag.blue { color: var(--accent); border-color: rgba(88,166,255,0.3); background: rgba(88,166,255,0.08); }
+  .tag.green { color: var(--accent2); border-color: rgba(63,185,80,0.3); background: rgba(63,185,80,0.08); }
+  .tag.red { color: var(--accent3); border-color: rgba(247,129,102,0.3); background: rgba(247,129,102,0.08); }
+  .tag.purple { color: var(--accent4); border-color: rgba(210,168,255,0.3); background: rgba(210,168,255,0.08); }
+  .tag.orange { color: var(--accent5); border-color: rgba(255,166,87,0.3); background: rgba(255,166,87,0.08); }
+
+  /* SECTION HEADINGS */
+  h2 { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+  h3 { font-size: 14px; font-weight: 700; margin-bottom: 8px; color: var(--accent); }
+  .section-intro { color: var(--muted); font-size: 13px; margin-bottom: 24px; max-width: 700px; line-height: 1.6; }
+
+  /* ACCORDION */
+  .accordion { margin-bottom: 8px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .accordion-header {
+    background: var(--surface);
+    padding: 14px 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 600;
+    font-size: 13px;
+    user-select: none;
+    transition: background 0.15s;
+  }
+  .accordion-header:hover { background: var(--surface2); }
+  .accordion-chevron { transition: transform 0.2s; color: var(--muted); }
+  .accordion.open .accordion-chevron { transform: rotate(90deg); }
+  .accordion-body { display: none; padding: 0 20px 18px; background: var(--surface); }
+  .accordion.open .accordion-body { display: block; }
+
+  /* PILL ROW */
+  .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+
+  /* DIVIDER */
+  .divider { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
+
+  /* TABLE */
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th { text-align: left; padding: 8px 12px; color: var(--muted); border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  td { padding: 9px 12px; border-bottom: 1px solid rgba(48,54,61,0.5); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { font-family: var(--font-mono); color: var(--accent); font-size: 12px; white-space: nowrap; }
+
+  /* CALLOUT */
+  .callout {
+    border-left: 3px solid var(--accent);
+    background: rgba(88,166,255,0.06);
+    border-radius: 0 6px 6px 0;
+    padding: 12px 16px;
+    font-size: 13px;
+    margin: 14px 0;
+  }
+  .callout.warn { border-left-color: var(--accent5); background: rgba(255,166,87,0.06); }
+  .callout.tip { border-left-color: var(--accent2); background: rgba(63,185,80,0.06); }
+
+  /* LIST */
+  ul.nice { padding-left: 20px; }
+  ul.nice li { margin-bottom: 6px; color: var(--text); }
+  ul.nice li::marker { color: var(--accent); }
+
+  p { margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="repo-icon">🚁</div>
+  <div>
+    <div class="repo-title">aerial-autonomy-stack</div>
+    <div class="repo-sub">JacopoPan · MIT · 466 ★ · 88 forks</div>
+  </div>
+  <div class="badges">
+    <span class="badge"><span class="dot" style="background:#3fb950"></span>Active</span>
+    <span class="badge">ROS2</span>
+    <span class="badge">PX4 / ArduPilot</span>
+    <span class="badge">NVIDIA GPU</span>
+  </div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="showTab('overview')">📋 Overview</div>
+  <div class="tab" onclick="showTab('structure')">📁 Structure</div>
+  <div class="tab" onclick="showTab('architecture')">🏗 Architecture</div>
+  <div class="tab" onclick="showTab('workflows')">⚙️ Workflows</div>
+  <div class="tab" onclick="showTab('modules')">🧩 Key Modules</div>
+  <div class="tab" onclick="showTab('deps')">📦 Dependencies</div>
+  <div class="tab" onclick="showTab('fork')">🍴 Your Fork</div>
+</div>
+
+<!-- ====================== OVERVIEW ====================== -->
+<div id="overview" class="section active">
+<div class="container">
+  <h2>What is this repo?</h2>
+  <p class="section-intro">
+    An all-in-one research-grade framework for developing, simulating, and deploying <strong>autonomous multi-drone systems</strong>.
+    It bridges the gap between algorithm prototyping and real hardware in one unified, Dockerized stack.
+  </p>
+
+  <div class="stat-grid">
+    <div class="stat-card"><div class="stat-num" style="color:var(--accent)">3</div><div class="stat-label">Core Pillars</div></div>
+    <div class="stat-card"><div class="stat-num" style="color:var(--accent2)">1075</div><div class="stat-label">Commits</div></div>
+    <div class="stat-card"><div class="stat-num" style="color:var(--accent4)">5</div><div class="stat-label">Sim Worlds</div></div>
+    <div class="stat-card"><div class="stat-num" style="color:var(--accent5)">2</div><div class="stat-label">Autopilots</div></div>
+  </div>
+
+  <div class="grid-3">
+    <div class="card">
+      <div class="card-title">🛠 Develop</div>
+      <div class="card-sub">Write your autonomy logic here</div>
+      ROS2-based action/service interface to command drones at a high level. Supports <strong>PX4</strong> (via XRCE-DDS) and <strong>ArduPilot</strong> (via MAVROS).
+      Use the <code>mission</code> YAML system to orchestrate multi-step flight plans without writing C++.
+    </div>
+    <div class="card">
+      <div class="card-title">🌐 Simulate</div>
+      <div class="card-sub">Test before you fly</div>
+      Dockerized <strong>Gazebo Sim</strong> with 5 photorealistic worlds, multiple vehicle models, YOLO + LiDAR perception.
+      Runs <strong>faster-than-real-time</strong> (e.g. RTF=3.0) and exposes a Gymnasium RL interface.
+    </div>
+    <div class="card">
+      <div class="card-title">🚀 Deploy</div>
+      <div class="card-sub">Same code, real aircraft</div>
+      Targets <strong>NVIDIA Jetson Orin NX</strong> with JetPack + DeepStream. TensorRT-accelerated YOLO, Livox LiDAR, GStreamer video pipeline. One <code>./deploy_run.sh</code> command.
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🎯 Who is this for?</div>
+    <p>Researchers and engineers who need to go from <em>"I have a drone autonomy idea"</em> to <em>"I tested it in sim AND on a real quadrotor"</em> without gluing together 10 separate projects. The author (Jacopo Panerati, now at NRC Canada) also wrote <code>gym-pybullet-drones</code> and published the autonomous drone racing dataset — this is the real-hardware successor.</p>
+    <div class="pill-row">
+      <span class="tag blue">Swarm coordination</span>
+      <span class="tag blue">RL training</span>
+      <span class="tag green">Sim-to-real</span>
+      <span class="tag green">Perception pipelines</span>
+      <span class="tag purple">HITL validation</span>
+      <span class="tag orange">Flight log analysis</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📄 Associated Paper</div>
+    <div class="card-sub">Presented at ICUAS 2026</div>
+    <em>aerial-autonomy-stack — a Faster-than-real-time, Autopilot-agnostic, ROS2 Framework to Simulate and Deploy Perception-based Drones</em><br>
+    Panerati, Sajjadi, Soleymanpour, Mehta, Mantegh · <a href="https://arxiv.org/abs/2602.07264" target="_blank">arXiv:2602.07264</a>
+  </div>
+</div>
+</div>
+
+<!-- ====================== STRUCTURE ====================== -->
+<div id="structure" class="section">
+<div class="container">
+  <h2>Repository Structure</h2>
+  <p class="section-intro">Six top-level directories, each a logical "layer" of the system. Click any entry to learn more.</p>
+
+  <div class="tree">
+<span class="tree-folder">aerial-autonomy-stack/</span>
+│
+├── <span class="tree-folder">aas-gym/</span>          <span class="tree-comment"># Gymnasium RL wrapper around the whole sim</span>
+│   └── src/aas_gym/<span class="tree-file">aas_env.py</span>
+│
+├── <span class="tree-folder">aircraft/</span>         <span class="tree-comment"># Everything that runs ON the drone</span>
+│   ├── aircraft_ws/src/
+│   │   ├── <span class="tree-key">autopilot_interface</span>  <span class="tree-comment"># High-level actions: Takeoff, Orbit, Offboard, Land</span>
+│   │   ├── <span class="tree-key">imu_publisher</span>       <span class="tree-comment"># Mux PX4-DDS ↔ ArduPilot-MAVROS sensor topics</span>
+│   │   ├── <span class="tree-key">mission</span>             <span class="tree-comment"># YAML-driven orchestrator of actions</span>
+│   │   ├── <span class="tree-key">offboard_control</span>    <span class="tree-comment"># Low-level rate/trajectory setpoints</span>
+│   │   ├── <span class="tree-key">state_sharing</span>       <span class="tree-comment"># Publishes /state_sharing_drone_N via Zenoh</span>
+│   │   └── <span class="tree-key">yolo_py</span>             <span class="tree-comment"># GStreamer capture + YOLO bounding boxes</span>
+│   └── aircraft.yml.erb           <span class="tree-comment"># tmux entrypoint for the aircraft container</span>
+│
+├── <span class="tree-folder">ground/</span>           <span class="tree-comment"># Ground-station system</span>
+│   ├── ground_ws/src/
+│   │   └── <span class="tree-key">ground_system</span>       <span class="tree-comment"># Publishes /tracks topic, receives via Zenoh</span>
+│   └── ground.yml.erb             <span class="tree-comment"># tmux entrypoint (QGC + Zenoh bridge)</span>
+│
+├── <span class="tree-folder">simulation/</span>       <span class="tree-comment"># Gazebo Sim resources</span>
+│   └── simulation_resources/
+│       ├── aircraft_models/       <span class="tree-comment"># x500(PX4), iris(ArduPilot), VTOLs, sensors</span>
+│       │   └── sensor_config.yaml <span class="tree-comment"># Intrinsics/extrinsics for all sensors</span>
+│       └── simulation_worlds/     <span class="tree-comment"># 5 SDF world files</span>
+│
+├── <span class="tree-folder">tools_and_docs/</span>  <span class="tree-comment"># Scripts, Dockerfiles, docs</span>
+│   ├── docker/
+│   │   ├── aircraft.dockerfile    <span class="tree-comment"># amd64 + arm64 build</span>
+│   │   ├── ground.dockerfile
+│   │   └── simulation.dockerfile
+│   ├── sim_build.sh / sim_run.sh  <span class="tree-comment"># Build & launch simulation</span>
+│   ├── deploy_build.sh / deploy_run.sh
+│   └── gym_run.py                 <span class="tree-comment"># Gymnasium example runner</span>
+│
+└── <span class="tree-folder">.github/workflows/</span> <span class="tree-comment"># CI: amd64 build+test, arm64 build, gym pip install</span>
+  </div>
+
+  <div class="accordion open">
+    <div class="accordion-header" onclick="toggleAccordion(this)">
+      📂 aircraft/ — drone-side code
+      <span class="accordion-chevron">▶</span>
+    </div>
+    <div class="accordion-body">
+      <p>This is the heart of what runs on each drone (in simulation or on hardware). It's a ROS2 workspace with several packages:</p>
+      <table>
+        <tr><th>Package</th><th>Role</th><th>Key output</th></tr>
+        <tr><td>autopilot_interface</td><td>Wraps PX4/ArduPilot primitives into ROS2 <strong>actions</strong> (Takeoff, Land, Orbit, Offboard)</td><td>ros2 action servers on <code>/Drone{N}/takeoff_action</code>, etc.</td></tr>
+        <tr><td>mission</td><td>Reads a YAML mission file and calls autopilot_interface actions in sequence</td><td><code>ros2 run mission mission --conops myplan.yaml</code></td></tr>
+        <tr><td>offboard_control</td><td>Sends low-level rate/attitude/trajectory setpoints during the Offboard action phase</td><td>PX4 <code>VehicleRatesSetpoint</code> or ArduPilot <code>setpoint_velocity</code></td></tr>
+        <tr><td>yolo_py</td><td>Grabs frames from GStreamer (camera) and runs YOLO inference (ONNX + GPU)</td><td><code>/detections</code> topic</td></tr>
+        <tr><td>state_sharing</td><td>Broadcasts this drone's state over Zenoh for swarm awareness</td><td><code>/state_sharing_drone_N</code></td></tr>
+        <tr><td>imu_publisher</td><td>Unifies IMU topic naming between PX4-DDS and ArduPilot-MAVROS</td><td>Consistent <code>/imu</code> topic</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="accordion">
+    <div class="accordion-header" onclick="toggleAccordion(this)">
+      🌍 simulation_worlds/ — the 5 Gazebo worlds
+      <span class="accordion-chevron">▶</span>
+    </div>
+    <div class="accordion-body">
+      <table>
+        <tr><th>World</th><th>Description</th></tr>
+        <tr><td>apple_orchard</td><td>GIS-derived real-geography terrain built with BlenderGIS. Good for realistic outdoors.</td></tr>
+        <tr><td>impalpable_greyness</td><td>Empty grey world with simple shapes. Fastest, best for algorithm iteration.</td></tr>
+        <tr><td>shibuya_crossing</td><td>Dense urban 3D scene from cgtrader. Great for perception testing.</td></tr>
+        <tr><td>swiss_town</td><td>Photogrammetry world from Pix4D. Very realistic textures.</td></tr>
+        <tr><td>waterworld</td><td>Dynamic ocean waves via the <code>asv_wave_sim</code> plugin. Maritime UAV scenarios.</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="accordion">
+    <div class="accordion-header" onclick="toggleAccordion(this)">
+      🐳 Docker architecture
+      <span class="accordion-chevron">▶</span>
+    </div>
+    <div class="accordion-body">
+      <p>Three separate Docker images keep simulation, ground, and aircraft concerns isolated. This also means you can pull a pre-built image from <code>ghcr.io</code> instead of building from scratch (~45 min).</p>
+      <table>
+        <tr><th>Image</th><th>Base</th><th>Runs on</th><th>Contains</th></tr>
+        <tr><td>simulation-image</td><td>cuda:12.9.2-cudnn-ubuntu22.04</td><td>amd64 only</td><td>Gazebo Sim, PX4 SITL, ArduPilot SITL, flight_review</td></tr>
+        <tr><td>aircraft-image</td><td>same (sim) / l4t-jetpack:r36.4 (deploy)</td><td>amd64 + arm64</td><td>ROS2 ws, YOLO ONNX, KISS-ICP, MAVROS/XRCE-DDS</td></tr>
+        <tr><td>ground-image</td><td>cuda:12.9.2</td><td>amd64</td><td>QGroundControl, Zenoh bridge, mavlink-router</td></tr>
+      </table>
+      <div class="callout tip">Pre-built images are rebuilt from <code>main</code> every Friday night. Use <code>docker pull ghcr.io/jacopopan/{name}-image:latest</code> to skip the build.</div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ====================== ARCHITECTURE ====================== -->
+<div id="architecture" class="section">
+<div class="container">
+  <h2>System Architecture</h2>
+  <p class="section-intro">How the three containers talk to each other — and how real hardware fits in.</p>
+
+  <div class="card">
+    <div class="card-title">Data flow at a glance</div>
+    <div class="flow">
+      <div class="flow-node green">
+        <div class="flow-node-title">🌐 Gazebo</div>
+        <small>simulation-container</small><br>
+        <small>PX4/ArduPilot SITL</small>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node highlight">
+        <div class="flow-node-title">✈️ Aircraft</div>
+        <small>aircraft-container ×N</small><br>
+        <small>YOLO · KISS-ICP · Control</small>
+      </div>
+      <div class="flow-arrow">⇄</div>
+      <div class="flow-node purple">
+        <div class="flow-node-title">📡 Ground</div>
+        <small>ground-container</small><br>
+        <small>QGC · Zenoh · Tracking</small>
+      </div>
+    </div>
+    <ul class="nice">
+      <li>Gazebo renders the 3D world and runs SITL flight controllers. It sends camera/LiDAR streams over <code>SIM_SUBNET</code> (a Docker bridge network).</li>
+      <li>Each aircraft container runs one complete perception + control stack per drone. Multiple containers = multi-drone swarm.</li>
+      <li>Zenoh is the inter-vehicle and aircraft↔ground bridge — it routes ROS2 topics over TCP across the <code>AIR_SUBNET</code>, enabling real swarm communication patterns even in sim.</li>
+      <li>mavlink-router on the ground side routes MAVLink telemetry to QGroundControl.</li>
+    </ul>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">PX4 path (XRCE-DDS)</div>
+      <pre>Gazebo SITL
+  ↕ gz_bridge (Gazebo topics)
+PX4 SITL
+  ↕ uxrce_dds_agent (UDP)
+ROS2 autopilot_interface
+  ↕ VehicleRatesSetpoint
+offboard_control</pre>
+      <p style="font-size:12px;color:var(--muted);margin-top:8px">PX4 speaks DDS natively since v1.14 — no MAVROS needed for control.</p>
+    </div>
+    <div class="card">
+      <div class="card-title">ArduPilot path (MAVROS)</div>
+      <pre>Gazebo SITL
+  ↕ ardupilot_gazebo plugin
+ArduPilot SITL
+  ↕ MAVROS (MAVLink/UDP)
+ROS2 autopilot_interface
+  ↕ setpoint_velocity
+offboard_control</pre>
+      <p style="font-size:12px;color:var(--muted);margin-top:8px">ArduPilot uses GUIDED mode; MAVROS translates between MAVLink and ROS2.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🔁 HITL: Hardware-in-the-Loop topology</div>
+    <div class="card-sub">Replace the aircraft container with a real Jetson Orin + Pixhawk</div>
+    <div class="flow">
+      <div class="flow-node green"><div class="flow-node-title">💻 Sim PC</div><small>SIM_SUBNET<br>.90.100</small></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node highlight"><div class="flow-node-title">🤖 Jetson ×N</div><small>SIM_SUBNET .90.1–N<br>AIR_SUBNET .90.1–N</small></div>
+      <div class="flow-arrow">⇄</div>
+      <div class="flow-node purple"><div class="flow-node-title">🖥 Ground PC</div><small>AIR_SUBNET<br>.90.101</small></div>
+    </div>
+    <p>The dual-network design separates simulated sensor traffic (large bandwidth, LAN-only) from inter-vehicle comms (must work over real wireless links).</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📡 Networking model</div>
+    <table>
+      <tr><th>Network</th><th>Purpose</th><th>Default</th><th>Who uses it</th></tr>
+      <tr><td>SIM_SUBNET</td><td>Camera/LiDAR data, SITL UDP</td><td>172.30.x.x /16</td><td>Gazebo → aircraft</td></tr>
+      <tr><td>AIR_SUBNET</td><td>Zenoh swarm comms, QGC MAVLink</td><td>10.223.x.x /16</td><td>aircraft ↔ ground</td></tr>
+    </table>
+  </div>
+</div>
+</div>
+
+<!-- ====================== WORKFLOWS ====================== -->
+<div id="workflows" class="section">
+<div class="container">
+  <h2>Key Workflows</h2>
+  <p class="section-intro">The most common things you'll actually do with this repo.</p>
+
+  <div class="accordion open">
+    <div class="accordion-header" onclick="toggleAccordion(this)">
+      🏗 1. Build the simulation (first time)
+      <span class="accordion-chevron">▶</span>
+    </div>
+    <div class="accordion-body">
+      <div class="callout warn">Requires: Ubuntu 24.04, nvidia-driver-580, Docker Engine v29, nvidia-container-toolkit. Run <code>./tests/check_requirements.sh</code> first.</div>
+      <pre><span class="kw">sudo</span> apt update && <span class="kw">sudo</span> apt install -y git xterm xfonts-base wget unzip
+git clone https://github.com/JacopoPan/aerial-autonomy-stack.git
+<span class="kw">cd</span> aerial-autonomy-stack/tools_and_docs/
+./sim_build.sh    <span class="cm"># ~45 min on first run; Docker layer caching makes re-runs fast</span></pre>
+      <div class="callout tip">Or pull pre-built images from GitHub Container Registry (rebuilt every Friday night from main):<br><code>docker pull ghcr.io/jacopopan/aircraft-image:latest</code></div>
+    </div>
+  </div>
+
+  <div class="accordion">
+    <div class="accordion-header" onclick="toggleAccordion(this)">
+      ✈️ 2. Run a multi-drone simulation
+      <span class="accordion-chevron">▶</span>
+    </div>
+    <div class="accordion-body">
+      <pre><span class="cm"># Terminal 1 — start the world</span>
+<span class="kw">cd</span> aerial-autonomy-stack/tools_and_docs/
+AUTOPILOT=<span class="str">px4</span> NUM_QUADS=<span class="num">2</span> NUM_VTOLS=<span class="num">1</span> WORLD=<span class="str">swiss_town</span> RTF=<span class="num">3.0</span> ./sim_run.sh
+
+<span class="cm"># Terminal 2 — fly all drones using the mission orchestrator</span>
+<span class="kw">for</span> ID in {1..3}; <span class="kw">do</span>
+  docker exec -d aircraft-container-inst0_$ID bash -c <span class="str">"source /opt/ros/humble/setup.bash &&
+    source /aas/aircraft_ws/install/setup.bash &&
+    ros2 run mission mission --conops yalla.yaml --ros-args -r __ns:=/Drone$ID -p use_sim_time:=true"</span>
+<span class="kw">done</span></pre>
+      <table style="margin-top:12px">
+        <tr><th>Variable</th><th>Options</th><th>What it controls</th></tr>
+        <tr><td>AUTOPILOT</td><td>px4, ardupilot</td><td>Which flight controller stack runs</td></tr>
+        <tr><td>NUM_QUADS</td><td>0, 1, 2, …</td><td>Number of quadrotor instances</td></tr>
+        <tr><td>NUM_VTOLS</td><td>0, 1, 2, …</td><td>Number of VTOL (fixed-wing transition) instances</td></tr>
+        <tr><td>WORLD</td><td>5 options</td><td>Gazebo world loaded</td></tr>
+        <tr><td>RTF</td><td>1.0, 2.0, … / 0.0</td><td>Real-time factor (0.0 = as fast as possible)</td></tr>
+        <tr><td>HEADLESS</td><td>true, false</td><td>Disable Gazebo GUI for speed</td></tr>
+        <tr><td>INSTANCE</td><td>0, 1, …</td><td>Parallel simulation ID</td></tr>
+        <tr><td>DEV</td><td>true, false</td><td>Mount source folders as volumes for live editing</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="accordion">
+    <div class="accordion-header" onclick="toggleAccordion(this)">
+      🤖 3. Control a drone from ROS2 CLI
+      <span class="accordion-chevron">▶</span>
+    </div>
+    <div class="accordion-body">
+      <pre><span class="cm"># Set your drone ID</span>
+DRONE_ID=<span class="num">1</span>
+
+<span class="cm"># Takeoff to 40m</span>
+cancellable_action <span class="str">"ros2 action send_goal /Drone${DRONE_ID}/takeoff_action \
+  autopilot_interface_msgs/action/Takeoff \
+  '{takeoff_altitude: 40.0}'"</span>
+
+<span class="cm"># Orbit around a GPS point</span>
+cancellable_action <span class="str">"ros2 action send_goal /Drone${DRONE_ID}/orbit_action \
+  autopilot_interface_msgs/action/Orbit \
+  '{east: 500.0, north: 0.0, altitude: 150.0, radius: 200.0}'"</span>
+
+<span class="cm"># Offboard (low-level rate control for 5 sec)</span>
+cancellable_action <span class="str">"ros2 action send_goal /Drone${DRONE_ID}/offboard_action \
+  autopilot_interface_msgs/action/Offboard \
+  '{offboard_setpoint_type: 1, max_duration_sec: 5.0}'"</span>
+
+<span class="cm"># Land</span>
+cancellable_action <span class="str">"ros2 action send_goal /Drone${DRONE_ID}/land_action \
+  autopilot_interface_msgs/action/Land '{landing_altitude: 60.0}'"</span>
+
+<span class="cm"># Gimbal control</span>
+ros2 topic pub -1 /gimbal_pitch_cmd std_msgs/msg/Float64 <span class="str">"{data: 1.57}"</span></pre>
+      <div class="callout">The <code>cancellable_action</code> helper lets you Ctrl+C to abort mid-action — the drone will hover and wait for the next command.</div>
+    </div>
+  </div>
+
+  <div class="accordion">
+    <div class="accordion-header" onclick="toggleAccordion(this)">
+      🏋️ 4. Use as a Gymnasium RL environment
+      <span class="accordion-chevron">▶</span>
+    </div>
+    <div class="accordion-body">
+      <pre><span class="cm"># Install</span>
+conda activate aas
+<span class="kw">cd</span> aerial-autonomy-stack/aas-gym/
+pip3 install -e .
+
+<span class="cm"># Run examples</span>
+python3 tools_and_docs/gym_run.py --mode step          <span class="cm"># 1 Hz manual stepping</span>
+python3 tools_and_docs/gym_run.py --mode speedup       <span class="cm"># 50 Hz speed test</span>
+python3 tools_and_docs/gym_run.py --mode vectorenv-speedup  <span class="cm"># parallel envs</span></pre>
+      <p>The <code>aas_env.py</code> wraps the full simulation as a standard Gymnasium environment. Your RL agent calls <code>env.step(action)</code> and the sim runs at the configured RTF. Vectorised envs are supported for parallelized rollouts.</p>
+    </div>
+  </div>
+
+  <div class="accordion">
+    <div class="accordion-header" onclick="toggleAccordion(this)">
+      📊 5. Analyze flight logs
+      <span class="accordion-chevron">▶</span>
+    </div>
+    <div class="accordion-body">
+      <pre><span class="cm"># Inside the Simulation Xterm</span>
+/aas/simulation_resources/scripts/plot_logs.sh
+<span class="cm"># Opens flight_review at http://10.42.90.100:5006/browse</span>
+<span class="cm"># Or opens MAVExplorer for ArduPilot .bin files</span></pre>
+      <table style="margin-top:12px">
+        <tr><th>Tool</th><th>Log format</th><th>Best for</th></tr>
+        <tr><td>flight_review</td><td>.ulg (PX4)</td><td>PX4 flight analysis, web UI</td></tr>
+        <tr><td>MAVExplorer</td><td>.bin (ArduPilot)</td><td>ArduPilot parameter plots</td></tr>
+        <tr><td>PlotJuggler</td><td>rosbag</td><td>ROS2 topic time series</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="accordion">
+    <div class="accordion-header" onclick="toggleAccordion(this)">
+      🔧 6. Develop live inside containers
+      <span class="accordion-chevron">▶</span>
+    </div>
+    <div class="accordion-body">
+      <pre><span class="cm"># Mount source as volumes — edit on host, build in container</span>
+DEV=<span class="str">true</span> ./sim_run.sh
+
+<span class="cm"># Inside the QUAD Xterm:</span>
+<span class="kw">cd</span> /aas/aircraft_ws/
+colcon build --symlink-install
+
+<span class="cm"># Start/stop the sim without rebuilding the image</span>
+tmuxinator start -p /aas/aircraft.yml.erb
+<span class="cm"># Ctrl+b then d  →  detach tmux</span>
+<span class="cm"># tmux kill-server && pkill -f gz  →  full reset</span></pre>
+      <div class="callout tip">In DEV mode, <code>aircraft_resources/</code>, <code>aircraft_ws/src/</code>, etc. are bind-mounted. Changes you make on the host are immediately visible inside the container — you only need to <code>colcon build</code>, not rebuild the Docker image.</div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ====================== MODULES ====================== -->
+<div id="modules" class="section">
+<div class="container">
+  <h2>Key Modules Deep-Dive</h2>
+  <p class="section-intro">The packages you'll most likely read, modify, or extend.</p>
+
+  <div class="card">
+    <div class="card-title">🎮 autopilot_interface — the ROS2 action server</div>
+    <div class="card-sub">aircraft/aircraft_ws/src/autopilot_interface/</div>
+    <p>This is the abstraction layer between your high-level mission logic and the autopilot. It hides whether you're using PX4 or ArduPilot.</p>
+    <table>
+      <tr><th>Action/Service</th><th>Type</th><th>Description</th></tr>
+      <tr><td>/DroneN/takeoff_action</td><td>Action</td><td>Arm + take off to altitude. For VTOLs, handles transition heading and loiter point.</td></tr>
+      <tr><td>/DroneN/land_action</td><td>Action</td><td>Return and land. VTOLs transition back to multirotor mode.</td></tr>
+      <tr><td>/DroneN/orbit_action</td><td>Action</td><td>Circle a GPS coordinate at given radius/altitude.</td></tr>
+      <tr><td>/DroneN/offboard_action</td><td>Action</td><td>Hand control to offboard_control node for setpoint_type duration.</td></tr>
+      <tr><td>/DroneN/set_reposition</td><td>Service</td><td>Fly to an NED position (quads only).</td></tr>
+      <tr><td>/DroneN/set_speed</td><td>Service</td><td>Set cruise speed (limited by autopilot params).</td></tr>
+    </table>
+    <div class="callout">The <code>offboard_setpoint_type</code> values: 0=attitude, 1=rates, 2=trajectory (PX4); 3=velocity, 4=acceleration (ArduPilot)</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🗺 mission — YAML-driven flight orchestration</div>
+    <div class="card-sub">aircraft/aircraft_ws/src/mission/</div>
+    <p>Instead of writing C++ to sequence actions, you define a CONOPS (concept of operations) in YAML. The mission node reads it and calls the action servers in order.</p>
+    <pre><span class="cm"># Example: aircraft/aircraft_resources/missions/test_mission.yaml</span>
+<span class="cm"># (Create your own missions by copying this file)</span>
+ros2 run mission mission --conops <span class="str">your_mission.yaml</span> \
+  --ros-args -r __ns:=<span class="str">/Drone1</span> -p use_sim_time:=<span class="str">true</span></pre>
+    <p>For swarms: launch the mission node for each drone in parallel with different <code>__ns</code> values.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">👁 yolo_py — perception pipeline</div>
+    <div class="card-sub">aircraft/aircraft_ws/src/yolo_py/</div>
+    <p>In <strong>simulation</strong>: GStreamer pulls the camera stream from Gazebo via <code>gz_gst_bridge</code>. On <strong>Jetson hardware</strong>: GStreamer reads from the IMX219 camera via DeepStream.</p>
+    <p>YOLO runs via ONNX Runtime with GPU acceleration (TensorRT FP16 cache built on first run, ~10 min). Publishes bounding boxes on <code>/detections</code>, consumed by <code>offboard_control</code> for visual servoing.</p>
+    <div class="callout tip">To change YOLO model or sensor parameters, edit <code>simulation/simulation_resources/aircraft_models/sensor_config.yaml</code> and re-run <code>./sim_build.sh</code>.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🔗 state_sharing + Zenoh — swarm awareness</div>
+    <div class="card-sub">aircraft/aircraft_ws/src/state_sharing/</div>
+    <p>Each drone publishes its own state (position, velocity, heading) to <code>/state_sharing_drone_N</code>. The Zenoh bridge forwards this over TCP across the AIR_SUBNET, so every other drone (and the ground station) can subscribe to <code>/state_sharing_drone_M</code> and know where its neighbors are.</p>
+    <p>This is how the stack achieves decentralized swarm coordination without a central server — every drone knows the state of every other drone in real time.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🏋️ aas_env.py — Gymnasium interface</div>
+    <div class="card-sub">aas-gym/src/aas_gym/aas_env.py</div>
+    <p>Wraps the entire simulation stack as a standard <code>gymnasium.Env</code>. Your RL agent interacts with it via the standard <code>reset()</code> / <code>step(action)</code> / <code>render()</code> interface. The simulation can run at any RTF, so training is much faster than wall-clock time.</p>
+    <p>Vectorized via standard Gymnasium <code>VectorEnv</code> — you can run N parallel simulation instances (each with a different <code>INSTANCE</code> ID) and collect rollouts in parallel.</p>
+  </div>
+</div>
+</div>
+
+<!-- ====================== DEPS ====================== -->
+<div id="deps" class="section">
+<div class="container">
+  <h2>Dependencies</h2>
+  <p class="section-intro">The pinned external repos and why each version is fixed (it's more constrained than it looks).</p>
+
+  <div class="grid-2">
+    <div class="card">
+      <h3>Core stack</h3>
+      <table>
+        <tr><th>Dependency</th><th>Version</th></tr>
+        <tr><td>Ubuntu (host)</td><td>24.04 LTS</td></tr>
+        <tr><td>nvidia-driver</td><td>580</td></tr>
+        <tr><td>Docker Engine</td><td>v29</td></tr>
+        <tr><td>NVIDIA Container Toolkit</td><td>1.19</td></tr>
+        <tr><td>CUDA + cuDNN (amd64)</td><td>12.9.2</td></tr>
+        <tr><td>JetPack (arm64)</td><td>6.2.1 / L4T 36.4.4</td></tr>
+        <tr><td>ROS2</td><td>Humble (LTS, EOL 5/2027)</td></tr>
+        <tr><td>Gazebo Sim</td><td>Harmonic (LTS, EOL 9/2028)</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Flight & perception</h3>
+      <table>
+        <tr><th>Dependency</th><th>Version</th></tr>
+        <tr><td>PX4-Autopilot</td><td>v1.17.0</td></tr>
+        <tr><td>ArduPilot</td><td>Copter-4.6.3</td></tr>
+        <tr><td>YOLO (Ultralytics)</td><td>8.4 / YOLO26</td></tr>
+        <tr><td>ONNX Runtime (GPU)</td><td>1.23.2</td></tr>
+        <tr><td>KISS-ICP (LiDAR odometry)</td><td>main</td></tr>
+        <tr><td>DeepStream</td><td>7.1</td></tr>
+        <tr><td>Zenoh</td><td>latest</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🔒 Why these exact versions? (dependency chain)</div>
+    <p>The version pinning isn't arbitrary — it's a chain of hard constraints:</p>
+    <ul class="nice">
+      <li><strong>Jetson Orin</strong> only supports JetPack ≤ 6 → L4T 36 → Ubuntu 22 → Python 3.10</li>
+      <li><strong>Python 3.10</strong> max ONNX Runtime GPU wheel is <strong>1.23.2</strong> (1.24+ needs Python 3.11+)</li>
+      <li><strong>ONNX Runtime 1.23.2</strong> only supports CUDA 12 (CUDA 13 added in 1.24.1) → <strong>CUDA 12.9.2</strong></li>
+      <li><strong>Ubuntu 22</strong> ships GStreamer <strong>1.20</strong> → nvh264enc presets deprecated beyond nvidia-driver-595 → must stay on <strong>nvidia-driver-580</strong></li>
+      <li>This chain is why amd64 also uses Ubuntu 22 as the Docker base, even though the host is Ubuntu 24</li>
+    </ul>
+    <div class="callout warn">Upgrading any one of these may break the chain. Check the "Dependencies management" section of the README before bumping versions.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📌 External repos (pinned)</div>
+    <div class="pill-row">
+      <span class="tag blue">PX4/PX4-Autopilot @ v1.17.0</span>
+      <span class="tag blue">PX4/px4_msgs @ release/1.17</span>
+      <span class="tag green">ArduPilot/ardupilot @ Copter-4.6.3</span>
+      <span class="tag green">ArduPilot/ardupilot_gazebo @ main</span>
+      <span class="tag purple">PRBonn/kiss-icp @ main</span>
+      <span class="tag purple">microsoft/onnxruntime @ v1.23.2</span>
+      <span class="tag orange">srmainwaring/asv_wave_sim @ master</span>
+      <span class="tag orange">mavlink-router/mavlink-router @ master</span>
+      <span class="tag red">Livox-SDK/Livox-SDK2 @ master</span>
+      <span class="tag red">Livox-SDK/livox_ros_driver2 @ master</span>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ====================== FORK ====================== -->
+<div id="fork" class="section">
+<div class="container">
+  <h2>Your Fork</h2>
+  <p class="section-intro">You're 48 commits behind — here's what that means and how to manage it.</p>
+
+  <div class="card">
+    <div class="card-title">📊 48 commits behind: should you care?</div>
+    <p>For most use-cases, being 48 commits behind is <strong>fine</strong> — this is a research tooling repo, not a rapidly changing library you depend on via API. The codebase is stable. However there are specific scenarios where catching up matters:</p>
+    <table>
+      <tr><th>Scenario</th><th>Should you sync?</th></tr>
+      <tr><td>You're using the pre-built ghcr.io images</td><td><span class="tag green">Yes</span> — images are rebuilt from main weekly</td></tr>
+      <tr><td>You've made local changes to aircraft_ws/src</td><td><span class="tag orange">Maybe</span> — check if upstream changed the same files</td></tr>
+      <tr><td>You only run sim with your own missions</td><td><span class="tag red">Probably not</span> — your YAML missions are unaffected</td></tr>
+      <tr><td>Fixing a bug that might be fixed upstream</td><td><span class="tag green">Yes</span> — check the issues/commits first</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🔄 How to sync your fork with upstream</div>
+    <pre><span class="cm"># One-time: add upstream remote</span>
+git remote add upstream https://github.com/JacopoPan/aerial-autonomy-stack.git
+
+<span class="cm"># Fetch latest upstream commits</span>
+git fetch upstream
+
+<span class="cm"># See what changed (without applying)</span>
+git log HEAD..upstream/main --oneline
+
+<span class="cm"># Option A: fast-forward if you have NO local commits on main</span>
+git checkout main
+git merge upstream/main
+
+<span class="cm"># Option B: rebase your local commits on top of upstream</span>
+git rebase upstream/main
+
+<span class="cm"># Option C: cherry-pick only specific upstream commits</span>
+git cherry-pick &lt;commit-sha&gt;</pre>
+    <div class="callout tip">If you've been working in a branch (recommended!), Option B is cleanest — it replays your changes on top of the updated main.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🛡 Best practices for customizing this repo</div>
+    <ul class="nice">
+      <li><strong>Never edit main directly.</strong> Keep <code>main</code> as a clean mirror of upstream. Do all your work in feature branches.</li>
+      <li><strong>Your mission files live in</strong> <code>aircraft/aircraft_resources/missions/</code> — these are safe to commit to your fork and won't conflict with upstream changes.</li>
+      <li><strong>Custom sensor config</strong> in <code>simulation/simulation_resources/aircraft_models/sensor_config.yaml</code> — version-control this separately or in a branch.</li>
+      <li><strong>For new ROS2 nodes</strong>, add them to <code>aircraft_ws/src/</code> as new packages (don't modify existing packages) — this avoids merge conflicts.</li>
+      <li><strong>Check</strong> <code>tools_and_docs/docs/REQUIREMENTS_UBUNTU.md</code> after syncing — host requirements sometimes change between releases.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🔍 What to check in those 48 commits</div>
+    <pre><span class="cm"># After fetching upstream:</span>
+git log HEAD..upstream/main --oneline --stat
+
+<span class="cm"># Focus on these paths (most likely to affect you):</span>
+git log HEAD..upstream/main -- aircraft/aircraft_ws/src/
+git log HEAD..upstream/main -- tools_and_docs/docker/
+git log HEAD..upstream/main -- simulation/simulation_resources/aircraft_models/sensor_config.yaml</pre>
+    <p>Likely changes in 48 commits: bug fixes in autopilot_interface, new Dockerfile optimizations, updated dependency pins, new world files or sensor params. Unlikely to be breaking.</p>
+  </div>
+</div>
+</div>
+
+<script>
+function showTab(id) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelector(`[onclick="showTab('${id}')"]`).classList.add('active');
+  document.getElementById(id).classList.add('active');
+}
+
+function toggleAccordion(header) {
+  const acc = header.parentElement;
+  acc.classList.toggle('open');
+}
+</script>
+</body>
+</html>

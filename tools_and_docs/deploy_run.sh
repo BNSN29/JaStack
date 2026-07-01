@@ -90,7 +90,7 @@ docker run $DOCKER_RUN_FLAGS \
   --env SIM_SUBNET=$SIM_SUBNET --env AIR_SUBNET=$AIR_SUBNET --env SIM_ID=$SIM_ID --env GROUND_ID=$GROUND_ID \
   --env GND_CONTAINER=$GND_CONTAINER \
   --env ROS_DOMAIN_ID=$DRONE_ID \
-  --env REMOTE_VIDEO_STREAMS=true \
+  --env REMOTE_VIDEO_STREAMS=false\
   --net=host \
   --privileged \
   --name aircraft-container_$DRONE_ID \
